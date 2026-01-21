@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Renzz Store - Invoice System</title>
+  <style>
+    :root { --bg: #050816; --bg-soft: #0f172a; --primary: #38bdf8; --text: #e5e7eb; --success: #4ade80; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding: 20px; text-align: center; }
+    .container { max-width: 600px; margin: auto; }
+    .card { background: var(--bg-soft); padding: 20px; border-radius: 15px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 20px; cursor: pointer; }
+    .card.active { border-color: var(--primary); background: rgba(56,189,248,0.1); }
+    .btn { background: var(--primary); color: #000; border: none; padding: 15px; width: 100%; border-radius: 10px; font-weight: bold; cursor: pointer; }
+    
+    /* Overlay & Modals */
+    .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+    .modal { background: #fff; color: #000; padding: 25px; border-radius: 20px; width: 100%; max-width: 350px; }
+    .qr-img { width: 100%; max-width: 250px; margin: 15px 0; border: 1px solid #eee; }
+    
+    /* Invoice Styles */
+    .invoice { background: #f8fafc; border: 2px dashed #cbd5e1; padding: 20px; border-radius: 10px; color: #334155; text-align: left; }
+    .status-badge { background: var(--success); color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; float: right; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>🛒 Renzz Store</h2>
+  <div id="productGrid">
+    <div class="card" onclick="selectItem('reseller-panel', 1500, '100 Robux')">100 Robux - Rp 1.500</div>
+    <div class="card" onclick="selectItem('tangan-kanan-panel', 2500, '200 Robux')">200 Robux - Rp 2.500</div>
+  </div>
+  <input type="text" id="username" placeholder="Username Roblox" style="width:100%; padding:12px; margin: 10px 0; border-radius:8px; border:none;">
+  <button id="payBtn" class="btn" disabled onclick="processPayment()">BAYAR SEKARANG</button>
+</div>
+
+<div id="qrisModal" class="overlay">
+  <div class="modal">
+    <h3>Pembayaran QRIS</h3>
+    <p style="font-size: 12px; color: #666;">Silakan scan dan bayar tepat waktu</p>
+    <img id="qrDisplay" class="qr-img" src="">
+    <p>Status: <b id="payStatus" style="color: orange;">Menunggu Pembayaran...</b></p>
+    <small>ID: <span id="idDisplay"></span></small>
+  </div>
+</div>
+
+<div id="invoiceModal" class="overlay">
+  <div class="modal invoice">
+    <span class="status-badge">LUNAS</span>
+    <h3>INVOICE BERHASIL</h3>
+    <hr>
+    <p><b>Order ID:</b> <span id="invId"></span></p>
+    <p><b>Item:</b> <span id="invItem"></span></p>
+    <p><b>Username:</b> <span id="invUser"></span></p>
+    <p><b>Total:</b> <span id="invTotal"></span></p>
+    <hr>
+    <p style="text-align:center; font-size: 12px;">Terima kasih telah berbelanja!</p>
+    <button class="btn" onclick="location.reload()">Selesai & Tutup</button>
+  </div>
+</div>
+
+<script>
+  const BACKEND_URL = "https://teswebv2.vercel.app"; // GANTI URL INI
+  let selected = null;
+
+  function selectItem(id, price, name) {
+    selected = { id, price, name };
+    document.querySelectorAll('.card').forEach(c => c.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.getElementById('payBtn').disabled = false;
+  }
+
+  async function processPayment() {
+    const user = document.getElementById('username').value;
+    if(!user) return alert("Isi username!");
+    
+    const orderId = "RE-INV-" + Date.now();
+    document.getElementById('payBtn').innerText = "Generating QR...";
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/create-qris`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ amount: selected.price, order_id: orderId, product_id: selected.id })
+      });
+      
+      const result = await res.json();
+      if(!res.ok) throw new Error(result.error);
+
+      // Munculkan Modal QRIS
+      document.getElementById('qrDisplay').src = result.data.qr_link;
+      document.getElementById('idDisplay').innerText = orderId;
+      document.getElementById('qrisModal').style.display = 'flex';
+
+      startPolling(orderId);
+    } catch (e) { alert(e.message); }
+  }
+
+  function startPolling(orderId) {
+    const check = setInterval(async () => {
+      try {
+        const res = await fetch(`https://app.pakasir.com/api/transaction/check?order_id=${orderId}`);
+        const statusData = await res.json();
+        
+        if(statusData.data?.status === "success") {
+          clearInterval(check);
+          showInvoice(orderId);
+        }
+      } catch (e) { console.log("Checking..."); }
+    }, 5000);
+  }
+
+  function showInvoice(orderId) {
+    document.getElementById('qrisModal').style.display = 'none';
+    document.getElementById('invId').innerText = orderId;
+    document.getElementById('invItem').innerText = selected.name;
+    document.getElementById('invUser').innerText = document.getElementById('username').value;
+    document.getElementById('invTotal').innerText = "Rp " + selected.price.toLocaleString();
+    document.getElementById('invoiceModal').style.display = 'flex';
+  }
+</script>
+</body>
+</html>
