@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Renzz Marketplace - Integrated System</title>
+    <style>
+        :root { --bg: #050816; --bg-soft: #0f172a; --primary: #38bdf8; --text: #e5e7eb; --success: #4ade80; --danger: #f97373; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 500px; }
+        .header { text-align: center; margin-bottom: 25px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; }
+        .card { background: var(--bg-soft); padding: 20px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; text-align: center; position: relative; transition: 0.3s; }
+        .card.active { border-color: var(--primary); background: rgba(56, 189, 248, 0.1); box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
+        .card.disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+        .badge { position: absolute; top: 10px; right: 10px; font-size: 10px; padding: 2px 6px; border-radius: 5px; background: var(--primary); color: #000; font-weight: bold; }
+        .stock-label { font-size: 11px; margin-top: 8px; font-weight: bold; }
+        .form-group { background: var(--bg-soft); padding: 20px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.1); }
+        input { width: 100%; padding: 14px; margin: 12px 0; border-radius: 10px; border: 1px solid #333; background: #000; color: #fff; outline: none; }
+        .btn { background: #1e293b; color: #64748b; border: none; padding: 16px; width: 100%; border-radius: 12px; font-weight: bold; cursor: not-allowed; width: 100%; }
+        .btn.active { background: var(--primary); color: #000; cursor: pointer; }
+        
+        /* Status UI Elements */
+        #statusLine { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 15px; font-size: 12px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4b5563; }
+        .status-dot.pending { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+        .status-dot.success { background: #10b981; box-shadow: 0 0 8px #10b981; }
+        .status-dot.failed { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); align-items: center; justify-content: center; z-index: 9999; padding: 20px; }
+        .modal { background: #fff; color: #000; padding: 25px; border-radius: 25px; width: 100%; max-width: 360px; text-align: center; }
+        #qrImage { width: 100%; border-radius: 10px; margin: 15px 0; border: 1px solid #ddd; }
+        .invoice { text-align: left; background: #f8fafc; padding: 15px; border-radius: 12px; border: 2px dashed #cbd5e1; margin: 15px 0; color: #333; }
+        .inv-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; }
+        
+        .status-pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 10px; font-weight: bold; background: #eee; margin-bottom: 10px; }
+        .status-pill.success { background: #d1fae5; color: #065f46; }
+        .status-pill.failed { background: #fee2e2; color: #991b1b; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>🛒 Renzz Marketplace</h2>
+        <div id="statusLine">
+            <div class="status-dot"></div>
+            <span class="status-label">STATUS: IDLE</span>
+        </div>
+    </div>
+
+    <div id="productGrid" class="grid"></div>
+
+    <div class="form-group">
+        <div id="selectedInfo" style="margin-bottom: 10px; font-weight: bold; color: var(--primary);">Pilih produk dulu...</div>
+        <input type="text" id="username" placeholder="Masukkan Username Roblox">
+        <button id="payBtn" class="btn" onclick="handlePay()" disabled>PILIH PRODUK</button>
+    </div>
+</div>
+
+<div id="qrModal" class="overlay">
+    <div class="modal">
+        <div id="modalStatusPill" class="status-pill">PENDING</div>
+        <h3 style="font-weight: 800;">Scan Pembayaran</h3>
+        <img id="qrImage" src="" alt="QRIS">
+        <div id="modalStatusText" style="color:orange; font-weight:bold; margin-bottom:20px;">MENUNGGU PEMBAYARAN...</div>
+        <button class="btn active" style="background:#eee; color:#333;" onclick="closeModal()">Batalkan</button>
+    </div>
+</div>
+
+<div id="invoiceModal" class="overlay">
+    <div class="modal">
+        <div style="font-size: 50px;">✅</div>
+        <h3>Pembayaran Berhasil!</h3>
+        <div class="invoice">
+            <div class="inv-row"><span>ID Transaksi:</span> <b id="invId"></b></div>
+            <div class="inv-row"><span>Produk:</span> <b id="invItem"></b></div>
+            <div class="inv-row"><span>Username:</span> <b id="invUser"></b></div>
+            <div id="invoiceStatusText" style="font-weight: bold; color: green; margin-top: 10px;">LUNAS</div>
+        </div>
+        <button class="btn active" onclick="location.reload()">Selesai</button>
+    </div>
+</div>
+
+<script>
+    BACKEND_URL = "https://kepodeh.vercel.app"; 
+
+    // DATA PRODUK
+    const products = [
+        { id: "rbx100", name: "100 ROBUX", price: 500, emoji: "💎", stock: 1 },
+        { id: "rbx200", name: "200 ROBUX", price: 2400, emoji: "🔥", stock: 0 }
+    ];
+
+    let selected = null;
+
+    // --- FUNGSI DARI GAMBAR LU ---
+    function setStatusLine(statusText, type = 'idle') {
+        const line = document.getElementById("statusLine");
+        const dot = line.querySelector(".status-dot");
+        const label = line.querySelector(".status-label");
+        dot.classList.remove("pending", "success", "failed");
+        if (type === "pending") dot.classList.add("pending");
+        if (type === "success") dot.classList.add("success");
+        if (type === "failed") dot.classList.add("failed");
+        label.textContent = `STATUS: ${statusText}`;
+    }
+
+    function setModalStatus(type, label) {
+        const pill = document.getElementById("modalStatusPill");
+        const text = document.getElementById("modalStatusText");
+        const invStatus = document.getElementById("invoiceStatusText");
+        pill.classList.remove("success", "failed");
+        if (type === "success") pill.classList.add("success");
+        if (type === "failed") pill.classList.add("failed");
+        text.textContent = label;
+        if(invStatus) invStatus.textContent = label;
+    }
+
+    function openModal() { document.getElementById("qrModal").style.display = "flex"; }
+    function closeModal() { document.getElementById("qrModal").style.display = "none"; }
+
+    // --- RENDER & LOGIKA ---
+    function renderProducts() {
+        const grid = document.getElementById('productGrid');
+        grid.innerHTML = products.map(p => `
+            <div class="card ${p.stock <= 0 ? 'disabled' : ''}" onclick="selectItem('${p.id}')" id="card-${p.id}">
+                <div class="badge">${p.stock <= 0 ? 'HABIS' : 'PROMO'}</div>
+                <div style="font-size: 30px;">${p.emoji}</div>
+                <div style="font-weight: 800; margin-top:10px;">${p.name}</div>
+                <div class="stock-label" style="color:${p.stock <= 0 ? '#f97373' : '#4ade80'}">Stok: ${p.stock}</div>
+                <div style="color: var(--primary); font-weight: bold;">Rp ${p.price.toLocaleString()}</div>
+            </div>
+        `).join('');
+    }
+
+    function selectItem(id) {
+        selected = products.find(p => p.id === id);
+        if (selected.stock <= 0) return;
+        document.querySelectorAll('.card').forEach(c => c.classList.remove('active'));
+        document.getElementById(`card-${id}`).classList.add('active');
+        document.getElementById('selectedInfo').innerText = `Produk: ${selected.name}`;
+        const btn = document.getElementById('payBtn');
+        btn.disabled = false; btn.innerText = "BAYAR SEKARANG"; btn.classList.add('active');
+    }
+
+    async function handlePay() {
+        const user = document.getElementById('username').value.trim();
+        if(!user) return alert("Isi username!");
+        const btn = document.getElementById('payBtn');
+        const orderId = "RE-" + Date.now();
+        
+        setStatusLine("MEMPROSES...", "pending");
+        btn.innerText = "PROSES..."; btn.disabled = true;
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/api/create-qris`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ amount: selected.price, order_id: orderId })
+            });
+            const data = await res.json();
+            const payment = data.data || data.payment || data;
+            const qrisString = payment.payment_number || data.qris_string || "";
+            
+            document.getElementById('qrImage').src = `https://quickchart.io/qr?text=${encodeURIComponent(qrisString)}&size=500`;
+            openModal();
+            startPolling(orderId);
+        } catch (e) { 
+            setStatusLine("GAGAL", "failed");
+            btn.disabled = false; 
+        }
+    }
+
+    function startPolling(orderId) {
+        setStatusLine("MENUNGGU PEMBAYARAN...", "pending");
+        const check = setInterval(async () => {
+            try {
+                const res = await fetch(`${BACKEND_URL}/api/create-qris?order_id=${orderId}`);
+                const result = await res.json();
+                const status = result.status || (result.data && result.data.status) || "";
+                
+                if (status === "success" || status === "paid" || result.success === true) {
+                    clearInterval(check);
+                    
+                    // UPDATE UI PAKE FUNGSI LU
+                    setStatusLine("PEMBAYARAN BERHASIL", "success");
+                    setModalStatus("success", "LUNAS");
+                    
+                    // POTONG STOK
+                    selected.stock -= 1;
+                    renderProducts();
+
+                    setTimeout(() => {
+                        closeModal();
+                        showInvoice(orderId);
+                    }, 1500);
+                }
+            } catch (e) { console.log("Re-checking..."); }
+        }, 5000);
+    }
+
+    function showInvoice(orderId) {
+        document.getElementById('invId').innerText = orderId;
+        document.getElementById('invItem').innerText = selected.name;
+        document.getElementById('invUser').innerText = document.getElementById('username').value;
+        document.getElementById('invoiceModal').style.display = 'flex';
+    }
+
+    renderProducts();
+</script>
+</body>
+</html>
